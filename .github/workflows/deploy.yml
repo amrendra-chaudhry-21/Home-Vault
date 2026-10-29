@@ -189,3 +189,4 @@ jobs:
             echo "❌ ERROR: Health check failed or timed out!"
             docker logs homevault-backend --tail 50
             exit 1
+

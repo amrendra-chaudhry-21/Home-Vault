@@ -141,3 +141,4 @@ export const PROD_BACKEND_URL = 'http://<YOUR_EC2_PUBLIC_IP>:5001/api/v1';
 ```
 
 Now any Android device installing your APK will communicate directly with your AWS cloud backend!
+

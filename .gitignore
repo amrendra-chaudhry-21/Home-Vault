@@ -37,3 +37,4 @@ Thumbs.db
 # Local uploads
 backend/public/uploads/*
 !backend/public/uploads/.gitkeep
+
