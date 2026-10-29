@@ -1,0 +1,191 @@
+name: Production CI/CD (AWS EC2 Free Tier)
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  # ============================================================================
+  # 1. CI Quality Gate: Lint, Build, & Integration Tests
+  # ============================================================================
+  test-and-verify:
+    name: Run Automated Tests & Build Verification
+    runs-on: ubuntu-latest
+
+    services:
+      mongodb:
+        image: mongo:7.0
+        ports:
+          - 27017:27017
+        options: >-
+          --health-cmd "mongosh --eval 'db.adminCommand(\"ping\")'"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: 'npm'
+          cache-dependency-path: backend/package-lock.json
+
+      - name: Install Backend Dependencies
+        working-directory: ./backend
+        run: npm ci
+
+      - name: Verify TypeScript Compilation
+        working-directory: ./backend
+        run: npm run build
+
+      - name: Run Jest Test Suite (Isolated Test DB)
+        working-directory: ./backend
+        env:
+          NODE_ENV: test
+          PORT: 5001
+          MONGODB_URI: mongodb://127.0.0.1:27017/homevault_ci_test
+          JWT_ACCESS_SECRET: test_ci_jwt_access_secret_super_secure_key_1234
+          JWT_REFRESH_SECRET: test_ci_jwt_refresh_secret_super_secure_key_1234
+          ACCESS_TOKEN_TTL: 15m
+          REFRESH_TOKEN_TTL: 7d
+        run: npx jest --watchman=false --runInBand --detectOpenHandles --forceExit
+
+  # ============================================================================
+  # 2. Build Docker Image & Deploy to AWS EC2
+  # ============================================================================
+  build-and-deploy:
+    name: Build Container & Deploy to EC2
+    needs: test-and-verify
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set Image Tag Name
+        run: |
+          # Convert repository name to lowercase for Docker registry compatibility
+          REPO_LOWER=$(echo "${{ github.repository }}" | tr '[:upper:]' '[:lower:]')
+          echo "IMAGE_NAME=ghcr.io/${REPO_LOWER}-backend:latest" >> $GITHUB_ENV
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GitHub Container Registry (GHCR)
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build & Push Docker Image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./backend
+          file: ./backend/Dockerfile
+          push: true
+          tags: ${{ env.IMAGE_NAME }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Deploy to AWS EC2 via SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USER || 'ubuntu' }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          port: ${{ secrets.EC2_SSH_PORT || 22 }}
+          envs: IMAGE_NAME
+          script: |
+            set -euo pipefail
+
+            DEPLOY_DIR="/home/${USER}/homevault"
+            echo "🚀 Deploying to ${DEPLOY_DIR}..."
+            mkdir -p "${DEPLOY_DIR}"
+            cd "${DEPLOY_DIR}"
+
+            # 1. Dynamically write production .env from GitHub Secrets
+            cat << 'EOF' > .env
+            NODE_ENV=production
+            PORT=5001
+            MONGODB_URI=${{ secrets.MONGODB_URI }}
+            JWT_ACCESS_SECRET=${{ secrets.JWT_ACCESS_SECRET }}
+            JWT_REFRESH_SECRET=${{ secrets.JWT_REFRESH_SECRET }}
+            ACCESS_TOKEN_TTL=15m
+            REFRESH_TOKEN_TTL=7d
+            CORS_ORIGINS=*
+            UPLOAD_STORAGE_DRIVER=local
+            LOCAL_UPLOAD_DIR=public/uploads
+            TZ=Asia/Kolkata
+            IMAGE_NAME=${IMAGE_NAME}
+            EOF
+
+            # 2. Authenticate to GHCR on EC2
+            echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+
+            # 3. Create production docker-compose.yml
+            cat << 'EOF' > docker-compose.yml
+            version: '3.8'
+            services:
+              backend:
+                image: ${IMAGE_NAME}
+                container_name: homevault-backend
+                restart: unless-stopped
+                ports:
+                  - "5001:5001"
+                env_file:
+                  - .env
+                volumes:
+                  - homevault_uploads:/app/public/uploads
+                deploy:
+                  resources:
+                    limits:
+                      memory: 512M
+                logging:
+                  driver: "json-file"
+                  options:
+                    max-size: "20m"
+                    max-file: "3"
+            volumes:
+              homevault_uploads:
+                name: homevault_uploads
+            EOF
+
+            # 4. Pull fresh image and restart containers
+            echo "📥 Pulling latest Docker image: ${IMAGE_NAME}..."
+            docker compose pull backend
+
+            echo "🔄 Restarting container..."
+            docker compose up -d --remove-orphans
+
+            # 5. Clean up stale Docker image layers to protect 20GB disk
+            docker image prune -f
+
+            # 6. Verify Healthcheck endpoint
+            echo "🩺 Verifying Health Check at http://localhost:5001/health..."
+            sleep 8
+            for i in {1..8}; do
+              if curl -sf http://localhost:5001/health | grep -q '"status":"UP"'; then
+                echo "=========================================================="
+                echo "🎉 SUCCESS: HomeVault Backend is UP & HEALTHY on AWS EC2!"
+                echo "=========================================================="
+                exit 0
+              fi
+              echo "Waiting for backend service to become ready... (Attempt $i/8)"
+              sleep 3
+            done
+
+            echo "❌ ERROR: Health check failed or timed out!"
+            docker logs homevault-backend --tail 50
+            exit 1

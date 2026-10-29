@@ -1,0 +1,10 @@
+node_modules/
+dist/
+.env
+.env.local
+.env.development
+.env.production
+!.env.example
+public/images/uploads/*
+!public/images/uploads/.gitkeep
+*.log
