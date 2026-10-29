@@ -18,17 +18,6 @@ jobs:
     name: Run Automated Tests & Build Verification
     runs-on: ubuntu-latest
 
-    services:
-      mongodb:
-        image: mongo:7.0
-        ports:
-          - 27017:27017
-        options: >-
-          --health-cmd "mongosh --eval 'db.adminCommand(\"ping\")'"
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
@@ -48,12 +37,24 @@ jobs:
         working-directory: ./backend
         run: npm run build
 
+      - name: Start MongoDB Test Container
+        run: |
+          docker run -d --name test-mongo -p 27017:27017 mongo:7.0
+          echo "Waiting for MongoDB test container to be ready..."
+          for i in {1..30}; do
+            if docker exec test-mongo mongosh --eval "db.adminCommand('ping')" >/dev/null 2>&1; then
+              echo "✅ MongoDB test container is ready and responsive!"
+              break
+            fi
+            sleep 1
+          done
+
       - name: Run Jest Test Suite (Isolated Test DB)
         working-directory: ./backend
         env:
           NODE_ENV: test
           PORT: 5001
-          MONGODB_URI: mongodb://127.0.0.1:27017/homevault_ci_test
+          MONGODB_URI: mongodb://127.0.0.1:27017/homevault_ci_test?directConnection=true
           JWT_ACCESS_SECRET: test_ci_jwt_access_secret_super_secure_key_1234
           JWT_REFRESH_SECRET: test_ci_jwt_refresh_secret_super_secure_key_1234
           ACCESS_TOKEN_TTL: 15m
@@ -189,4 +190,3 @@ jobs:
             echo "❌ ERROR: Health check failed or timed out!"
             docker logs homevault-backend --tail 50
             exit 1
-
