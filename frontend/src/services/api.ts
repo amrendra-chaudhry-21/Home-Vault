@@ -10,9 +10,8 @@ import {
   ApplianceCategory,
 } from '../types';
 
-// Production AWS Backend URL (Set your EC2 public IP or custom domain once deployed)
-// e.g.: 'http://13.232.xxx.xxx:5001/api/v1' or 'https://api.yourdomain.com/api/v1'
-export const PROD_BACKEND_URL = '';
+// Production AWS Backend URL (Connected to AWS EC2 t2.micro)
+export const PROD_BACKEND_URL = 'http://3.25.133.140:5001/api/v1';
 
 // Default host LAN IP for local testing on physical devices (e.g., Samsung Galaxy S25) and emulators
 const DEFAULT_LAN_IP = '192.168.1.9';
