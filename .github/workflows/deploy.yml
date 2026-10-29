@@ -101,15 +101,31 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-      - name: Deploy to AWS EC2 via SSH
-        uses: appleboy/ssh-action@v1.0.3
-        with:
-          host: ${{ secrets.EC2_HOST }}
-          username: ${{ secrets.EC2_USER || 'ubuntu' }}
-          key: ${{ secrets.EC2_SSH_KEY }}
-          port: ${{ secrets.EC2_SSH_PORT || 22 }}
-          envs: IMAGE_NAME
-          script: |
+      - name: Deploy to AWS EC2 via Native OpenSSH
+        env:
+          EC2_HOST: ${{ secrets.EC2_HOST }}
+          EC2_USER: ${{ secrets.EC2_USER || 'ubuntu' }}
+          EC2_SSH_KEY: ${{ secrets.EC2_SSH_KEY }}
+          MONGODB_URI: ${{ secrets.MONGODB_URI }}
+          JWT_ACCESS_SECRET: ${{ secrets.JWT_ACCESS_SECRET }}
+          JWT_REFRESH_SECRET: ${{ secrets.JWT_REFRESH_SECRET }}
+          IMAGE_TAG: ${{ env.IMAGE_NAME }}
+          GH_ACTOR: ${{ github.actor }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # 1. Setup native OpenSSH key with proper Unix newlines and permissions
+          mkdir -p ~/.ssh
+          echo "$EC2_SSH_KEY" > ~/.ssh/id_rsa
+          echo "" >> ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+
+          # 2. Verify SSH connection to EC2
+          echo "🔑 Connecting to ${EC2_USER}@${EC2_HOST}..."
+          ssh -o StrictHostKeyChecking=no -o ConnectTimeout=20 -i ~/.ssh/id_rsa "${EC2_USER}@${EC2_HOST}" "echo '✅ SSH Connection successful!'"
+
+          # 3. Deploy container on EC2
+          ssh -o StrictHostKeyChecking=no -i ~/.ssh/id_rsa "${EC2_USER}@${EC2_HOST}" \
+            "IMAGE_NAME='${IMAGE_TAG}' MONGODB_URI='${MONGODB_URI}' JWT_ACCESS_SECRET='${JWT_ACCESS_SECRET}' JWT_REFRESH_SECRET='${JWT_REFRESH_SECRET}' GITHUB_ACTOR='${GH_ACTOR}' GITHUB_TOKEN='${GH_TOKEN}' bash -s" << 'ENDSSH'
             set -euo pipefail
 
             DEPLOY_DIR="/home/${USER}/homevault"
@@ -117,13 +133,13 @@ jobs:
             mkdir -p "${DEPLOY_DIR}"
             cd "${DEPLOY_DIR}"
 
-            # 1. Dynamically write production .env from GitHub Secrets
-            cat << 'EOF' > .env
+            # Write production .env file dynamically
+            cat << EOF > .env
             NODE_ENV=production
             PORT=5001
-            MONGODB_URI=${{ secrets.MONGODB_URI }}
-            JWT_ACCESS_SECRET=${{ secrets.JWT_ACCESS_SECRET }}
-            JWT_REFRESH_SECRET=${{ secrets.JWT_REFRESH_SECRET }}
+            MONGODB_URI=${MONGODB_URI}
+            JWT_ACCESS_SECRET=${JWT_ACCESS_SECRET}
+            JWT_REFRESH_SECRET=${JWT_REFRESH_SECRET}
             ACCESS_TOKEN_TTL=15m
             REFRESH_TOKEN_TTL=7d
             CORS_ORIGINS=*
@@ -133,11 +149,11 @@ jobs:
             IMAGE_NAME=${IMAGE_NAME}
             EOF
 
-            # 2. Authenticate to GHCR on EC2
-            echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+            # Authenticate Docker on EC2 to pull from GHCR
+            echo "${GITHUB_TOKEN}" | docker login ghcr.io -u "${GITHUB_ACTOR}" --password-stdin
 
-            # 3. Create production docker-compose.yml
-            cat << 'EOF' > docker-compose.yml
+            # Write production docker-compose.yml
+            cat << 'EOF_COMPOSE' > docker-compose.yml
             version: '3.8'
             services:
               backend:
@@ -162,19 +178,19 @@ jobs:
             volumes:
               homevault_uploads:
                 name: homevault_uploads
-            EOF
+            EOF_COMPOSE
 
-            # 4. Pull fresh image and restart containers
+            # Pull latest image & restart container
             echo "📥 Pulling latest Docker image: ${IMAGE_NAME}..."
             docker compose pull backend
 
             echo "🔄 Restarting container..."
             docker compose up -d --remove-orphans
 
-            # 5. Clean up stale Docker image layers to protect 20GB disk
+            # Clean dangling images to preserve 20GB disk
             docker image prune -f
 
-            # 6. Verify Healthcheck endpoint
+            # Health check verification loop
             echo "🩺 Verifying Health Check at http://localhost:5001/health..."
             sleep 8
             for i in {1..8}; do
@@ -191,3 +207,4 @@ jobs:
             echo "❌ ERROR: Health check failed or timed out!"
             docker logs homevault-backend --tail 50
             exit 1
+          ENDSSH
