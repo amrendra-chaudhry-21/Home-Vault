@@ -59,7 +59,8 @@ jobs:
           JWT_REFRESH_SECRET: test_ci_jwt_refresh_secret_super_secure_key_1234
           ACCESS_TOKEN_TTL: 15m
           REFRESH_TOKEN_TTL: 7d
-        run: npx jest --watchman=false --runInBand --detectOpenHandles --forceExit
+          NODE_OPTIONS: --experimental-vm-modules
+        run: npm test
 
   # ============================================================================
   # 2. Build Docker Image & Deploy to AWS EC2

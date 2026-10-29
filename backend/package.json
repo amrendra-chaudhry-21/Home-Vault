@@ -7,7 +7,7 @@
     "build": "tsc",
     "start": "node dist/server.js",
     "dev": "ts-node-dev --respawn --transpile-only src/server.ts",
-    "test": "jest --runInBand --detectOpenHandles --forceExit",
+    "test": "node --experimental-vm-modules node_modules/.bin/jest --runInBand --detectOpenHandles --forceExit",
     "setup:keys": "node scripts/setupKeys.js"
   },
   "dependencies": {

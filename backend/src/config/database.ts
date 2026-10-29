@@ -9,7 +9,11 @@ export const connectDatabase = async (): Promise<boolean> => {
       minPoolSize: 2,
       serverSelectionTimeoutMS: 5000,
       socketTimeoutMS: 45000,
-    });
+      driverInfo: {
+        name: 'nodejs-mongoose',
+        version: '9.11.2',
+      },
+    } as any);
 
     const maskedUri = env.MONGODB_URI.replace(/\/\/[^:]+:[^@]+@/, '//***:***@');
     console.log(`📦 MongoDB connected successfully to: ${maskedUri}`);
