@@ -46,9 +46,18 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onAuthSuccess }) => {
           email: email.trim(),
           password,
         });
-        const households = await api.getHouseholds();
-        const defaultHousehold = households[0] || null;
-        const defaultHouseholdId = defaultHousehold?.id;
+
+        // Use household directly returned from login, or fallback to query
+        let defaultHousehold = res.household || null;
+        let defaultHouseholdId = res.defaultHouseholdId || defaultHousehold?.id;
+        if (!defaultHousehold) {
+          try {
+            const households = await api.getHouseholds();
+            defaultHousehold = households[0] || null;
+            defaultHouseholdId = defaultHousehold?.id;
+          } catch (_) {}
+        }
+
         if (defaultHouseholdId) {
           api.setCurrentHouseholdId(defaultHouseholdId);
         }
@@ -98,9 +107,15 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onAuthSuccess }) => {
       const demoPassword = 'Password123!';
       try {
         const res = await api.login({ email: demoEmail, password: demoPassword });
-        const households = await api.getHouseholds();
-        const defaultHousehold = households[0] || null;
-        const defaultHouseholdId = defaultHousehold?.id;
+        let defaultHousehold = res.household || null;
+        let defaultHouseholdId = res.defaultHouseholdId || defaultHousehold?.id;
+        if (!defaultHousehold) {
+          try {
+            const households = await api.getHouseholds();
+            defaultHousehold = households[0] || null;
+            defaultHouseholdId = defaultHousehold?.id;
+          } catch (_) {}
+        }
         if (defaultHouseholdId) {
           api.setCurrentHouseholdId(defaultHouseholdId);
         }

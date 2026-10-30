@@ -237,7 +237,7 @@ export default function App() {
       <SafeAreaView style={styles.safeArea}>
       <StatusBar style="light" />
 
-      {/* Screen Router */}
+      {/* Screen Router with Keep-Alive Tabs for 0ms Instant Switching */}
       <View style={styles.mainContainer}>
         {selectedApplianceId ? (
           <ApplianceDetailScreen
@@ -247,47 +247,57 @@ export default function App() {
             onOpenAddService={(app) => setAddServiceAppliance(app)}
             onApplianceArchived={() => setSelectedApplianceId(null)}
           />
-        ) : currentTab === 'dashboard' ? (
-          <DashboardScreen
-            household={household}
-            onNavigateAppliances={() => setCurrentTab('appliances')}
-            onNavigateReminders={() => setCurrentTab('reminders')}
-            onAddAppliance={() => setIsAddApplianceVisible(true)}
-            onSelectAppliance={(id) => setSelectedApplianceId(id)}
-            onScanQR={() => setIsScannerVisible(true)}
-          />
-        ) : currentTab === 'appliances' ? (
-          <AppliancesScreen
-            household={household}
-            onSelectAppliance={(id) => setSelectedApplianceId(id)}
-            onAddAppliance={() => setIsAddApplianceVisible(true)}
-            onQuickQR={(app) => handleOpenQR(app)}
-            onScanQR={() => setIsScannerVisible(true)}
-          />
-        ) : currentTab === 'reminders' ? (
-          <RemindersScreen household={household} />
         ) : (
-          <SettingsScreen
-            user={currentUser}
-            household={household}
-            onLogout={async () => {
-              await api.logout();
-              await storageService.clearSession();
-              setCurrentUser(null);
-              setHousehold(null);
-              setSelectedApplianceId(null);
-            }}
-            onSelectHousehold={(h) => {
-              setHousehold(h);
-              api.setCurrentHouseholdId(h.id);
-              storageService.updateHousehold(h);
-            }}
-            onHouseholdCreated={(h) => {
-              setHousehold(h);
-              api.setCurrentHouseholdId(h.id);
-              storageService.updateHousehold(h);
-            }}
-          />
+          <>
+            <View style={[styles.tabPane, currentTab === 'dashboard' ? styles.tabActive : styles.tabHidden]}>
+              <DashboardScreen
+                household={household}
+                onNavigateAppliances={() => setCurrentTab('appliances')}
+                onNavigateReminders={() => setCurrentTab('reminders')}
+                onAddAppliance={() => setIsAddApplianceVisible(true)}
+                onSelectAppliance={(id) => setSelectedApplianceId(id)}
+                onScanQR={() => setIsScannerVisible(true)}
+              />
+            </View>
+
+            <View style={[styles.tabPane, currentTab === 'appliances' ? styles.tabActive : styles.tabHidden]}>
+              <AppliancesScreen
+                household={household}
+                onSelectAppliance={(id) => setSelectedApplianceId(id)}
+                onAddAppliance={() => setIsAddApplianceVisible(true)}
+                onQuickQR={(app) => handleOpenQR(app)}
+                onScanQR={() => setIsScannerVisible(true)}
+              />
+            </View>
+
+            <View style={[styles.tabPane, currentTab === 'reminders' ? styles.tabActive : styles.tabHidden]}>
+              <RemindersScreen household={household} />
+            </View>
+
+            <View style={[styles.tabPane, currentTab === 'settings' ? styles.tabActive : styles.tabHidden]}>
+              <SettingsScreen
+                user={currentUser}
+                household={household}
+                onLogout={async () => {
+                  await api.logout();
+                  await storageService.clearSession();
+                  setCurrentUser(null);
+                  setHousehold(null);
+                  setSelectedApplianceId(null);
+                }}
+                onSelectHousehold={(h) => {
+                  setHousehold(h);
+                  api.setCurrentHouseholdId(h.id);
+                  storageService.updateHousehold(h);
+                }}
+                onHouseholdCreated={(h) => {
+                  setHousehold(h);
+                  api.setCurrentHouseholdId(h.id);
+                  storageService.updateHousehold(h);
+                }}
+              />
+            </View>
+          </>
         )}
       </View>
 
@@ -378,6 +388,17 @@ const styles = StyleSheet.create({
   },
   mainContainer: {
     flex: 1,
+  },
+  tabPane: {
+    flex: 1,
+    width: '100%',
+    height: '100%',
+  },
+  tabActive: {
+    display: 'flex',
+  },
+  tabHidden: {
+    display: 'none',
   },
   center: {
     flex: 1,

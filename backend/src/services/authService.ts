@@ -12,6 +12,15 @@ import { AppError } from '../utils/appError';
 interface AuthTokens {
   accessToken: string;
   refreshToken: string;
+  defaultHouseholdId?: string;
+  household?: {
+    id: string;
+    name: string;
+    timezone: string;
+    role: string;
+    isOwner: boolean;
+    createdAt: Date | string;
+  } | null;
   user: {
     id: string;
     email: string;
@@ -120,9 +129,24 @@ export class AuthService {
     const accessToken = this.generateAccessToken(user);
     const refreshToken = await this.createRefreshToken(user._id.toString(), userAgent, ipAddress);
 
+    // Fetch primary household in parallel to eliminate extra frontend roundtrip
+    const membership = await HouseholdMember.findOne({ userId: user._id, status: 'active' })
+      .populate<{ householdId: any }>('householdId')
+      .lean();
+    const h = membership?.householdId as any;
+
     return {
       accessToken,
       refreshToken,
+      defaultHouseholdId: h?._id ? h._id.toString() : undefined,
+      household: h ? {
+        id: h._id.toString(),
+        name: h.name,
+        timezone: h.timezone || 'Asia/Kolkata',
+        role: membership?.role || 'owner',
+        isOwner: membership?.role === HOUSEHOLD_ROLES.OWNER,
+        createdAt: h.createdAt,
+      } : null,
       user: {
         id: user._id.toString(),
         email: user.email,

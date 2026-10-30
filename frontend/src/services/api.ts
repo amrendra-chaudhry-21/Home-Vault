@@ -244,6 +244,8 @@ class ApiService {
     const res = await this.request<{
       accessToken: string;
       refreshToken: string;
+      defaultHouseholdId?: string;
+      household?: Household | null;
       user: User;
     }>('/auth/login', {
       method: 'POST',
@@ -251,6 +253,9 @@ class ApiService {
     });
     this.setToken(res.data.accessToken);
     this.setRefreshToken(res.data.refreshToken);
+    if (res.data.defaultHouseholdId) {
+      this.setCurrentHouseholdId(res.data.defaultHouseholdId);
+    }
     return res.data;
   }
 

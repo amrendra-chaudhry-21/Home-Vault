@@ -19,16 +19,22 @@ interface RemindersScreenProps {
   household: Household | null;
 }
 
+// In-memory cache for 0ms instant tab rendering
+const remindersCache: Record<string, Reminder[]> = {};
+
 export const RemindersScreen: React.FC<RemindersScreenProps> = ({ household }) => {
-  const [reminders, setReminders] = useState<Reminder[]>([]);
   const [activeTab, setActiveTab] = useState<'pending' | 'completed'>('pending');
-  const [loading, setLoading] = useState(true);
+  const cacheKey = household ? `${household.id}_${activeTab}` : '';
+  const cached = cacheKey ? remindersCache[cacheKey] : null;
+  const [reminders, setReminders] = useState<Reminder[]>(cached || []);
+  const [loading, setLoading] = useState(!cached);
   const [refreshing, setRefreshing] = useState(false);
 
   const loadReminders = useCallback(async () => {
     if (!household) return;
     try {
       const items = await api.getReminders(household.id, activeTab);
+      remindersCache[`${household.id}_${activeTab}`] = items;
       setReminders(items);
     } catch (err: any) {
       console.warn('Could not load reminders:', err.message);
