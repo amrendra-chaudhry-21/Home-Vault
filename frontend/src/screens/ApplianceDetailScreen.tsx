@@ -9,6 +9,7 @@ import {
   Alert,
   Image,
   Modal,
+  Platform,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
@@ -83,16 +84,80 @@ export const ApplianceDetailScreen: React.FC<ApplianceDetailScreenProps> = ({
 
       const res = await FileSystem.downloadAsync(downloadUrl, localUri);
 
-      const canShare = await Sharing.isAvailableAsync();
-      if (canShare) {
-        await Sharing.shareAsync(res.uri, {
-          mimeType: doc.mimeType || (safeFilename.toLowerCase().endsWith('.pdf') ? 'application/pdf' : 'image/jpeg'),
-          dialogTitle: `Download / Save ${doc.originalFilename}`,
-          UTI: safeFilename.toLowerCase().endsWith('.pdf') ? 'com.adobe.pdf' : 'public.image',
-        });
-      } else {
-        Alert.alert('Saved', `Document downloaded: ${res.uri}`);
-      }
+      // Offer direct save to phone storage as primary action, or share/send as secondary
+      Alert.alert(
+        'Download Document',
+        `Save "${doc.originalFilename}" to your phone?`,
+        [
+          {
+            text: '💾 Save to Phone Storage',
+            onPress: async () => {
+              try {
+                if (Platform.OS === 'android' && FileSystem.StorageAccessFramework) {
+                  const permissions = await FileSystem.StorageAccessFramework.requestDirectoryPermissionsAsync();
+                  if (permissions.granted) {
+                    const base64 = await FileSystem.readAsStringAsync(res.uri, {
+                      encoding: FileSystem.EncodingType.Base64,
+                    });
+                    const mimeType =
+                      doc.mimeType ||
+                      (safeFilename.toLowerCase().endsWith('.pdf') ? 'application/pdf' : 'image/jpeg');
+                    const dotIdx = safeFilename.lastIndexOf('.');
+                    const nameWithoutExt = dotIdx > 0 ? safeFilename.substring(0, dotIdx) : safeFilename;
+
+                    const newFileUri = await FileSystem.StorageAccessFramework.createFileAsync(
+                      permissions.directoryUri,
+                      nameWithoutExt,
+                      mimeType
+                    );
+
+                    await FileSystem.writeAsStringAsync(newFileUri, base64, {
+                      encoding: FileSystem.EncodingType.Base64,
+                    });
+
+                    Alert.alert(
+                      'Download Complete ✅',
+                      `"${doc.originalFilename}" has been saved directly to your phone storage.`
+                    );
+                    return;
+                  }
+                }
+
+                // If not Android or user cancelled SAF, attempt share/save
+                const canShare = await Sharing.isAvailableAsync();
+                if (canShare) {
+                  await Sharing.shareAsync(res.uri, {
+                    mimeType: doc.mimeType || (safeFilename.toLowerCase().endsWith('.pdf') ? 'application/pdf' : 'image/jpeg'),
+                    dialogTitle: `Save ${doc.originalFilename}`,
+                    UTI: safeFilename.toLowerCase().endsWith('.pdf') ? 'com.adobe.pdf' : 'public.image',
+                  });
+                }
+              } catch (saveErr: any) {
+                console.warn('Direct phone storage save error:', saveErr);
+                Alert.alert('Save Error', saveErr?.message || 'Could not save file to device storage.');
+              }
+            },
+          },
+          {
+            text: '📤 Share / Send to App',
+            onPress: async () => {
+              try {
+                const canShare = await Sharing.isAvailableAsync();
+                if (canShare) {
+                  await Sharing.shareAsync(res.uri, {
+                    mimeType: doc.mimeType || (safeFilename.toLowerCase().endsWith('.pdf') ? 'application/pdf' : 'image/jpeg'),
+                    dialogTitle: `Share ${doc.originalFilename}`,
+                    UTI: safeFilename.toLowerCase().endsWith('.pdf') ? 'com.adobe.pdf' : 'public.image',
+                  });
+                }
+              } catch (shareErr: any) {
+                console.warn('Share error:', shareErr);
+              }
+            },
+          },
+          { text: 'Cancel', style: 'cancel' },
+        ]
+      );
     } catch (err: any) {
       console.warn('Download document error:', err?.message || err);
       Alert.alert('Download Failed', err?.message || 'Could not download document.');

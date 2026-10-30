@@ -84,3 +84,4 @@ if [ "$HEALTHY" -ne 1 ]; then
   docker logs homevault-backend --tail 50
   exit 1
 fi
+

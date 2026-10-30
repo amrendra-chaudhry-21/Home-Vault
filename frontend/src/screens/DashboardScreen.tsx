@@ -25,6 +25,9 @@ interface DashboardScreenProps {
   onScanQR: () => void;
 }
 
+// In-memory cache to ensure zero-lag instant screen renders
+const dashboardCache: Record<string, DashboardData> = {};
+
 export const DashboardScreen: React.FC<DashboardScreenProps> = ({
   household,
   onNavigateAppliances,
@@ -33,14 +36,16 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({
   onSelectAppliance,
   onScanQR,
 }) => {
-  const [data, setData] = useState<DashboardData | null>(null);
-  const [loading, setLoading] = useState(true);
+  const cached = household ? dashboardCache[household.id] : null;
+  const [data, setData] = useState<DashboardData | null>(cached || null);
+  const [loading, setLoading] = useState(!cached);
   const [refreshing, setRefreshing] = useState(false);
 
   const loadDashboard = useCallback(async () => {
     if (!household) return;
     try {
       const res = await api.getDashboard(household.id);
+      dashboardCache[household.id] = res;
       setData(res);
     } catch (err: any) {
       console.warn('Could not load dashboard:', err.message);

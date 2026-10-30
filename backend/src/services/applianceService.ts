@@ -138,7 +138,7 @@ export class ApplianceService {
     else if (options.sort === 'name') sortObj = { name: 1 };
 
     const [appliances, total] = await Promise.all([
-      Appliance.find(filter).sort(sortObj).skip(skip).limit(limit),
+      Appliance.find(filter).sort(sortObj).skip(skip).limit(limit).lean(),
       Appliance.countDocuments(filter),
     ]);
 
@@ -197,12 +197,13 @@ export class ApplianceService {
     const [services, documents, reminders] = await Promise.all([
       ServiceRecord.find({ applianceId: appliance._id })
         .sort({ serviceDate: -1 })
-        .limit(10),
-      DocumentModel.find({ applianceId: appliance._id }).sort({ createdAt: -1 }),
+        .limit(10)
+        .lean(),
+      DocumentModel.find({ applianceId: appliance._id }).sort({ createdAt: -1 }).lean(),
       Reminder.find({
         applianceId: appliance._id,
         status: REMINDER_STATUS.PENDING,
-      }).sort({ dueAt: 1 }),
+      }).sort({ dueAt: 1 }).lean(),
     ]);
 
     return {
@@ -363,7 +364,8 @@ export class ApplianceService {
       })
         .select('name brand modelNumber category warrantyEndDate')
         .sort({ warrantyEndDate: 1 })
-        .limit(5),
+        .limit(5)
+        .lean(),
       Reminder.find({
         householdId: householdObjId,
         status: REMINDER_STATUS.PENDING,
@@ -371,11 +373,13 @@ export class ApplianceService {
       })
         .populate<{ applianceId: { name: string; brand: string } }>('applianceId', 'name brand')
         .sort({ dueAt: 1 })
-        .limit(5),
+        .limit(5)
+        .lean(),
       ServiceRecord.find({ householdId: householdObjId })
         .populate<{ applianceId: { name: string; brand: string } }>('applianceId', 'name brand')
         .sort({ serviceDate: -1 })
-        .limit(5),
+        .limit(5)
+        .lean(),
     ]);
 
     return {

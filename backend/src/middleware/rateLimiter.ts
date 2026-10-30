@@ -6,6 +6,7 @@ export const apiLimiter = rateLimit({
   max: 300, // Limit each IP to 300 requests per 15 minutes
   standardHeaders: true,
   legacyHeaders: false,
+  validate: { trustProxy: false },
   message: {
     success: false,
     error: {
@@ -15,12 +16,13 @@ export const apiLimiter = rateLimit({
   },
 });
 
-// Stricter rate limiter for sensitive authentication endpoints
+// Rate limiter for authentication endpoints
 export const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 20, // 20 attempts per window
+  max: 100, // 100 attempts per window (avoids mobile test lockouts)
   standardHeaders: true,
   legacyHeaders: false,
+  validate: { trustProxy: false },
   message: {
     success: false,
     error: {

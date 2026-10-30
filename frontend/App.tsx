@@ -88,6 +88,8 @@ export default function App() {
           if (session.household) {
             setHousehold(session.household);
           }
+          // Instantly unblock UI so app opens in <50ms without buffering
+          setInitializing(false);
         }
 
         // Verify session with backend in background or refresh expired access token

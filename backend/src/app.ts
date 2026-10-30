@@ -12,6 +12,9 @@ import { AppError } from './utils/appError';
 export const createApp = () => {
   const app = express();
 
+  // Trust 1 hop (Docker / reverse proxy) for accurate client IP detection
+  app.set('trust proxy', 1);
+
   // Security Middleware
   app.use(helmet());
   app.use(

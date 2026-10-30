@@ -43,6 +43,9 @@ const STATUS_FILTERS: Array<{ label: string; value?: WarrantyStatus }> = [
   { label: 'Expired', value: 'EXPIRED' },
 ];
 
+// In-memory cache to ensure instant tab switching without loading spinners
+const appliancesCache: Record<string, Appliance[]> = {};
+
 export const AppliancesScreen: React.FC<AppliancesScreenProps> = ({
   household,
   onSelectAppliance,
@@ -50,12 +53,13 @@ export const AppliancesScreen: React.FC<AppliancesScreenProps> = ({
   onQuickQR,
   onScanQR,
 }) => {
-  const [appliances, setAppliances] = useState<Appliance[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
   const [search, setSearch] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('All');
   const [selectedStatus, setSelectedStatus] = useState<WarrantyStatus | undefined>(undefined);
+  const cached = household ? appliancesCache[household.id] : null;
+  const [appliances, setAppliances] = useState<Appliance[]>(cached || []);
+  const [loading, setLoading] = useState(!cached);
+  const [refreshing, setRefreshing] = useState(false);
 
   const loadAppliances = useCallback(async () => {
     if (!household) return;
@@ -65,6 +69,9 @@ export const AppliancesScreen: React.FC<AppliancesScreenProps> = ({
         search: search.trim() || undefined,
         warrantyStatus: selectedStatus,
       });
+      if (selectedCategory === 'All' && !search.trim() && !selectedStatus) {
+        appliancesCache[household.id] = items;
+      }
       setAppliances(items);
     } catch (err: any) {
       console.warn('Failed to load appliances:', err.message);
