@@ -150,6 +150,78 @@ class StorageService {
       await this.saveSession(session);
     }
   }
+
+  private generalCache: Record<string, any> = {};
+
+  async saveCache(key: string, data: any): Promise<void> {
+    this.generalCache[key] = data;
+
+    if (Platform.OS === 'web') {
+      try {
+        if (typeof window !== 'undefined' && window.localStorage) {
+          window.localStorage.setItem(`hv_cache_${key}`, JSON.stringify(data));
+        }
+      } catch (err) {
+        console.warn(`[Storage] Web cache save failed for ${key}:`, err);
+      }
+      return;
+    }
+
+    try {
+      const docDir = FileSystem.documentDirectory;
+      if (!docDir) return;
+      const filePath = docDir.endsWith('/')
+        ? `${docDir}cache_${key}.json`
+        : `${docDir}/cache_${key}.json`;
+      await FileSystem.writeAsStringAsync(filePath, JSON.stringify(data));
+    } catch (err) {
+      console.warn(`[Storage] Native cache save failed for ${key}:`, err);
+    }
+  }
+
+  async getCache<T>(key: string): Promise<T | null> {
+    if (this.generalCache[key] !== undefined) {
+      return this.generalCache[key] as T;
+    }
+
+    if (Platform.OS === 'web') {
+      try {
+        if (typeof window !== 'undefined' && window.localStorage) {
+          const raw = window.localStorage.getItem(`hv_cache_${key}`);
+          if (raw) {
+            const parsed = JSON.parse(raw) as T;
+            this.generalCache[key] = parsed;
+            return parsed;
+          }
+        }
+      } catch (err) {
+        console.warn(`[Storage] Web cache read failed for ${key}:`, err);
+      }
+      return null;
+    }
+
+    try {
+      const docDir = FileSystem.documentDirectory;
+      if (!docDir) return null;
+      const filePath = docDir.endsWith('/')
+        ? `${docDir}cache_${key}.json`
+        : `${docDir}/cache_${key}.json`;
+
+      const info = await FileSystem.getInfoAsync(filePath);
+      if (!info.exists) return null;
+
+      const raw = await FileSystem.readAsStringAsync(filePath);
+      if (!raw) return null;
+
+      const parsed = JSON.parse(raw) as T;
+      this.generalCache[key] = parsed;
+      return parsed;
+    } catch (err) {
+      console.warn(`[Storage] Native cache read failed for ${key}:`, err);
+    }
+
+    return null;
+  }
 }
 
 export const storageService = new StorageService();

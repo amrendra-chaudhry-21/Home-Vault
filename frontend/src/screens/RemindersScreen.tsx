@@ -13,6 +13,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { COLORS } from '../theme/colors';
 import { ReminderCard } from '../components/ReminderCard';
 import { api } from '../services/api';
+import { storageService } from '../services/storage';
 import { Household, Reminder } from '../types';
 
 interface RemindersScreenProps {
@@ -30,11 +31,24 @@ export const RemindersScreen: React.FC<RemindersScreenProps> = ({ household }) =
   const [loading, setLoading] = useState(!cached);
   const [refreshing, setRefreshing] = useState(false);
 
+  // Restore persistent disk cache immediately on mount or tab change
+  useEffect(() => {
+    if (!cacheKey || reminders.length > 0) return;
+    storageService.getCache<Reminder[]>(`reminders_${cacheKey}`).then((saved) => {
+      if (saved && saved.length > 0) {
+        remindersCache[cacheKey] = saved;
+        setReminders(saved);
+        setLoading(false);
+      }
+    });
+  }, [cacheKey, reminders.length]);
+
   const loadReminders = useCallback(async () => {
     if (!household) return;
     try {
       const items = await api.getReminders(household.id, activeTab);
       remindersCache[`${household.id}_${activeTab}`] = items;
+      storageService.saveCache(`reminders_${household.id}_${activeTab}`, items).catch(() => {});
       setReminders(items);
     } catch (err: any) {
       console.warn('Could not load reminders:', err.message);
@@ -102,30 +116,31 @@ export const RemindersScreen: React.FC<RemindersScreenProps> = ({ household }) =
         </TouchableOpacity>
       </View>
 
-      {loading && !refreshing ? (
-        <View style={styles.centerContainer}>
-          <ActivityIndicator size="large" color={COLORS.chaiOrange} />
-        </View>
-      ) : (
-        <FlatList
-          data={reminders}
-          keyExtractor={(item) => item.id}
-          contentContainerStyle={styles.listContent}
-          refreshControl={
-            <RefreshControl
-              refreshing={refreshing}
-              onRefresh={onRefresh}
-              tintColor={COLORS.chaiOrange}
-            />
-          }
-          renderItem={({ item }) => (
-            <ReminderCard
-              reminder={item}
-              onComplete={activeTab === 'pending' ? () => handleComplete(item.id) : undefined}
-              onDismiss={activeTab === 'pending' ? () => handleDismiss(item.id) : undefined}
-            />
-          )}
-          ListEmptyComponent={
+      <FlatList
+        data={reminders}
+        keyExtractor={(item) => item.id}
+        contentContainerStyle={styles.listContent}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor={COLORS.chaiOrange}
+          />
+        }
+        renderItem={({ item }) => (
+          <ReminderCard
+            reminder={item}
+            onComplete={activeTab === 'pending' ? () => handleComplete(item.id) : undefined}
+            onDismiss={activeTab === 'pending' ? () => handleDismiss(item.id) : undefined}
+          />
+        )}
+        ListEmptyComponent={
+          loading && !refreshing ? (
+            <View style={styles.emptyContainer}>
+              <ActivityIndicator size="large" color={COLORS.chaiOrange} />
+              <Text style={[styles.emptySubtitle, { marginTop: 16 }]}>Loading alerts...</Text>
+            </View>
+          ) : (
             <View style={styles.emptyContainer}>
               <Ionicons
                 name={activeTab === 'pending' ? 'shield-checkmark-outline' : 'archive-outline'}
@@ -141,9 +156,9 @@ export const RemindersScreen: React.FC<RemindersScreenProps> = ({ household }) =
                   : 'Completed maintenance tasks will be archived here.'}
               </Text>
             </View>
-          }
-        />
-      )}
+          )
+        }
+      />
     </View>
   );
 };

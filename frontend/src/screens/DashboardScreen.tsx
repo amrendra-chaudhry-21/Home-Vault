@@ -14,6 +14,7 @@ import { StatCard } from '../components/StatCard';
 import { ReminderCard } from '../components/ReminderCard';
 import { ServiceRecordCard } from '../components/ServiceRecordCard';
 import { api } from '../services/api';
+import { storageService } from '../services/storage';
 import { DashboardData, Household, Reminder, ServiceRecord } from '../types';
 
 interface DashboardScreenProps {
@@ -41,11 +42,24 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({
   const [loading, setLoading] = useState(!cached);
   const [refreshing, setRefreshing] = useState(false);
 
+  // Restore persistent disk cache immediately on mount
+  useEffect(() => {
+    if (!household || data) return;
+    storageService.getCache<DashboardData>(`dashboard_${household.id}`).then((saved) => {
+      if (saved) {
+        dashboardCache[household.id] = saved;
+        setData(saved);
+        setLoading(false);
+      }
+    });
+  }, [household, data]);
+
   const loadDashboard = useCallback(async () => {
     if (!household) return;
     try {
       const res = await api.getDashboard(household.id);
       dashboardCache[household.id] = res;
+      storageService.saveCache(`dashboard_${household.id}`, res).catch(() => {});
       setData(res);
     } catch (err: any) {
       console.warn('Could not load dashboard:', err.message);
@@ -63,15 +77,6 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({
     setRefreshing(true);
     loadDashboard();
   };
-
-  if (loading && !refreshing) {
-    return (
-      <View style={styles.centerContainer}>
-        <ActivityIndicator size="large" color={COLORS.chaiOrange} />
-        <Text style={styles.loadingText}>Syncing Home Memory...</Text>
-      </View>
-    );
-  }
 
   const stats = data?.stats || {
     totalAppliances: 0,

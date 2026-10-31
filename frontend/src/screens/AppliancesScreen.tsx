@@ -14,6 +14,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { COLORS } from '../theme/colors';
 import { ApplianceCard } from '../components/ApplianceCard';
 import { api } from '../services/api';
+import { storageService } from '../services/storage';
 import { Appliance, ApplianceCategory, Household, WarrantyStatus } from '../types';
 
 interface AppliancesScreenProps {
@@ -61,6 +62,18 @@ export const AppliancesScreen: React.FC<AppliancesScreenProps> = ({
   const [loading, setLoading] = useState(!cached);
   const [refreshing, setRefreshing] = useState(false);
 
+  // Restore persistent disk cache immediately on mount
+  useEffect(() => {
+    if (!household || appliances.length > 0) return;
+    storageService.getCache<Appliance[]>(`appliances_${household.id}`).then((saved) => {
+      if (saved && saved.length > 0) {
+        appliancesCache[household.id] = saved;
+        setAppliances(saved);
+        setLoading(false);
+      }
+    });
+  }, [household, appliances.length]);
+
   const loadAppliances = useCallback(async () => {
     if (!household) return;
     try {
@@ -71,6 +84,7 @@ export const AppliancesScreen: React.FC<AppliancesScreenProps> = ({
       });
       if (selectedCategory === 'All' && !search.trim() && !selectedStatus) {
         appliancesCache[household.id] = items;
+        storageService.saveCache(`appliances_${household.id}`, items).catch(() => {});
       }
       setAppliances(items);
     } catch (err: any) {
@@ -160,30 +174,31 @@ export const AppliancesScreen: React.FC<AppliancesScreenProps> = ({
       </View>
 
       {/* Main Appliance List */}
-      {loading && !refreshing ? (
-        <View style={styles.centerContainer}>
-          <ActivityIndicator size="large" color={COLORS.chaiOrange} />
-        </View>
-      ) : (
-        <FlatList
-          data={appliances}
-          keyExtractor={(item) => item.id}
-          contentContainerStyle={styles.listContent}
-          refreshControl={
-            <RefreshControl
-              refreshing={refreshing}
-              onRefresh={onRefresh}
-              tintColor={COLORS.chaiOrange}
-            />
-          }
-          renderItem={({ item }) => (
-            <ApplianceCard
-              appliance={item}
-              onPress={() => onSelectAppliance(item.id)}
-              onQuickQR={() => onQuickQR(item)}
-            />
-          )}
-          ListEmptyComponent={
+      <FlatList
+        data={appliances}
+        keyExtractor={(item) => item.id}
+        contentContainerStyle={styles.listContent}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor={COLORS.chaiOrange}
+          />
+        }
+        renderItem={({ item }) => (
+          <ApplianceCard
+            appliance={item}
+            onPress={() => onSelectAppliance(item.id)}
+            onQuickQR={() => onQuickQR(item)}
+          />
+        )}
+        ListEmptyComponent={
+          loading && !refreshing ? (
+            <View style={styles.emptyContainer}>
+              <ActivityIndicator size="large" color={COLORS.chaiOrange} />
+              <Text style={[styles.emptySubtitle, { marginTop: 16 }]}>Loading appliances...</Text>
+            </View>
+          ) : (
             <View style={styles.emptyContainer}>
               <View style={styles.emptyIconCircle}>
                 <Ionicons name="hardware-chip-outline" size={40} color={COLORS.chaiOrange} />
@@ -199,9 +214,9 @@ export const AppliancesScreen: React.FC<AppliancesScreenProps> = ({
                 <Text style={styles.addFirstBtnText}>Add Appliance</Text>
               </TouchableOpacity>
             </View>
-          }
-        />
-      )}
+          )
+        }
+      />
     </View>
   );
 };

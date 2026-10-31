@@ -143,43 +143,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
         </TouchableOpacity>
       </View>
 
-      {/* Backend Cloud Server Connection */}
-      <View style={styles.card}>
-        <Text style={styles.cardHeader}>Cloud Infrastructure</Text>
-        <View style={styles.householdItem}>
-          <Ionicons name="cloud-done-outline" size={20} color={COLORS.chaiOrange} />
-          <View style={styles.householdDetails}>
-            <Text style={styles.householdName}>AWS EC2 Backend</Text>
-            <Text style={styles.householdTz} numberOfLines={1}>{api.getBaseUrl()}</Text>
-          </View>
-          <TouchableOpacity
-            style={styles.testBtnSmall}
-            onPress={async () => {
-              try {
-                const healthUrl = api.getBaseUrl().replace('/api/v1', '/health');
-                const controller = new AbortController();
-                const timeoutId = setTimeout(() => controller.abort(), 6000);
-                const res = await fetch(healthUrl, { signal: controller.signal });
-                clearTimeout(timeoutId);
-                if (res.ok) {
-                  const json = await res.json();
-                  Alert.alert(
-                    'Cloud Server Active ✅',
-                    `URL: ${api.getBaseUrl()}\nStatus: ${json.status}\nDatabase: ${json.database?.status || 'CONNECTED'}\n\nFast connection to AWS EC2!`
-                  );
-                } else {
-                  Alert.alert('Status Error', `HTTP ${res.status}: ${res.statusText}`);
-                }
-              } catch (e: any) {
-                Alert.alert('Connection Failed', `Could not reach ${api.getBaseUrl()}\n${e?.message || 'Timed out'}`);
-              }
-            }}
-            activeOpacity={0.8}
-          >
-            <Text style={styles.testBtnSmallText}>Test Link</Text>
-          </TouchableOpacity>
-        </View>
-      </View>
+
 
       {/* Data Privacy & Security */}
       <View style={styles.card}>
@@ -374,19 +338,7 @@ const styles = StyleSheet.create({
     color: COLORS.textMuted,
     flex: 1,
   },
-  testBtnSmall: {
-    backgroundColor: 'rgba(254, 110, 0, 0.12)',
-    paddingHorizontal: 12,
-    paddingVertical: 7,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: 'rgba(254, 110, 0, 0.4)',
-  },
-  testBtnSmallText: {
-    color: COLORS.chaiOrange,
-    fontSize: 12,
-    fontWeight: '700',
-  },
+
   logoutBtn: {
     flexDirection: 'row',
     alignItems: 'center',

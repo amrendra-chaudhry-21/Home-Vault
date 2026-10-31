@@ -31,8 +31,15 @@ export default function App() {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [household, setHousehold] = useState<Household | null>(null);
   const [currentTab, setCurrentTab] = useState<TabScreen>('dashboard');
+  const [visitedTabs, setVisitedTabs] = useState<Record<string, boolean>>({ dashboard: true });
   const [selectedApplianceId, setSelectedApplianceId] = useState<string | null>(null);
   const [initializing, setInitializing] = useState(true);
+
+  const switchTab = (tab: TabScreen) => {
+    setSelectedApplianceId(null);
+    setVisitedTabs((prev) => (prev[tab] ? prev : { ...prev, [tab]: true }));
+    setCurrentTab(tab);
+  };
 
   // Modals
   const [isAddApplianceVisible, setIsAddApplianceVisible] = useState(false);
@@ -252,51 +259,58 @@ export default function App() {
             <View style={[styles.tabPane, currentTab === 'dashboard' ? styles.tabActive : styles.tabHidden]}>
               <DashboardScreen
                 household={household}
-                onNavigateAppliances={() => setCurrentTab('appliances')}
-                onNavigateReminders={() => setCurrentTab('reminders')}
+                onNavigateAppliances={() => switchTab('appliances')}
+                onNavigateReminders={() => switchTab('reminders')}
                 onAddAppliance={() => setIsAddApplianceVisible(true)}
                 onSelectAppliance={(id) => setSelectedApplianceId(id)}
                 onScanQR={() => setIsScannerVisible(true)}
               />
             </View>
 
-            <View style={[styles.tabPane, currentTab === 'appliances' ? styles.tabActive : styles.tabHidden]}>
-              <AppliancesScreen
-                household={household}
-                onSelectAppliance={(id) => setSelectedApplianceId(id)}
-                onAddAppliance={() => setIsAddApplianceVisible(true)}
-                onQuickQR={(app) => handleOpenQR(app)}
-                onScanQR={() => setIsScannerVisible(true)}
-              />
-            </View>
+            {visitedTabs.appliances && (
+              <View style={[styles.tabPane, currentTab === 'appliances' ? styles.tabActive : styles.tabHidden]}>
+                <AppliancesScreen
+                  household={household}
+                  onSelectAppliance={(id) => setSelectedApplianceId(id)}
+                  onAddAppliance={() => setIsAddApplianceVisible(true)}
+                  onQuickQR={(app) => handleOpenQR(app)}
+                  onScanQR={() => setIsScannerVisible(true)}
+                />
+              </View>
+            )}
 
-            <View style={[styles.tabPane, currentTab === 'reminders' ? styles.tabActive : styles.tabHidden]}>
-              <RemindersScreen household={household} />
-            </View>
+            {visitedTabs.reminders && (
+              <View style={[styles.tabPane, currentTab === 'reminders' ? styles.tabActive : styles.tabHidden]}>
+                <RemindersScreen household={household} />
+              </View>
+            )}
 
-            <View style={[styles.tabPane, currentTab === 'settings' ? styles.tabActive : styles.tabHidden]}>
-              <SettingsScreen
-                user={currentUser}
-                household={household}
-                onLogout={async () => {
-                  await api.logout();
-                  await storageService.clearSession();
-                  setCurrentUser(null);
-                  setHousehold(null);
-                  setSelectedApplianceId(null);
-                }}
-                onSelectHousehold={(h) => {
-                  setHousehold(h);
-                  api.setCurrentHouseholdId(h.id);
-                  storageService.updateHousehold(h);
-                }}
-                onHouseholdCreated={(h) => {
-                  setHousehold(h);
-                  api.setCurrentHouseholdId(h.id);
-                  storageService.updateHousehold(h);
-                }}
-              />
-            </View>
+            {visitedTabs.settings && (
+              <View style={[styles.tabPane, currentTab === 'settings' ? styles.tabActive : styles.tabHidden]}>
+                <SettingsScreen
+                  user={currentUser}
+                  household={household}
+                  onLogout={async () => {
+                    await api.logout();
+                    await storageService.clearSession();
+                    setCurrentUser(null);
+                    setHousehold(null);
+                    setSelectedApplianceId(null);
+                    setVisitedTabs({ dashboard: true });
+                  }}
+                  onSelectHousehold={(h) => {
+                    setHousehold(h);
+                    api.setCurrentHouseholdId(h.id);
+                    storageService.updateHousehold(h);
+                  }}
+                  onHouseholdCreated={(h) => {
+                    setHousehold(h);
+                    api.setCurrentHouseholdId(h.id);
+                    storageService.updateHousehold(h);
+                  }}
+                />
+              </View>
+            )}
           </>
         )}
       </View>
@@ -305,10 +319,7 @@ export default function App() {
       {!selectedApplianceId && (
         <BottomTabBar
           currentTab={currentTab}
-          onSelectTab={(tab) => {
-            setSelectedApplianceId(null);
-            setCurrentTab(tab);
-          }}
+          onSelectTab={(tab) => switchTab(tab)}
           onAddPress={() => setIsAddApplianceVisible(true)}
         />
       )}
