@@ -20,6 +20,7 @@ import { COLORS } from '../theme/colors';
 import { Badge } from '../components/Badge';
 import { ServiceRecordCard } from '../components/ServiceRecordCard';
 import { api } from '../services/api';
+import { storageService } from '../services/storage';
 import { Appliance, DocumentItem, ServiceRecord, Reminder } from '../types';
 
 interface ApplianceDetailScreenProps {
@@ -30,6 +31,9 @@ interface ApplianceDetailScreenProps {
   onApplianceArchived: () => void;
 }
 
+// In-memory cache for instant 0ms appliance screen transitions
+const applianceDetailCache: Record<string, any> = {};
+
 export const ApplianceDetailScreen: React.FC<ApplianceDetailScreenProps> = ({
   applianceId,
   onBack,
@@ -37,20 +41,36 @@ export const ApplianceDetailScreen: React.FC<ApplianceDetailScreenProps> = ({
   onOpenAddService,
   onApplianceArchived,
 }) => {
+  const cached = applianceDetailCache[applianceId] || null;
   const [appliance, setAppliance] = useState<
     (Appliance & { services: ServiceRecord[]; documents: DocumentItem[]; reminders: Reminder[] }) | null
-  >(null);
-  const [loading, setLoading] = useState(true);
+  >(cached);
+  const [loading, setLoading] = useState(!cached);
   const [viewingDocument, setViewingDocument] = useState<DocumentItem | null>(null);
+  const [docImageLoading, setDocImageLoading] = useState(false);
   const [uploadingDoc, setUploadingDoc] = useState(false);
   const [downloadingDocId, setDownloadingDocId] = useState<string | null>(null);
+
+  // Restore persistent disk cache immediately
+  useEffect(() => {
+    if (appliance) return;
+    storageService.getCache<any>(`appliance_${applianceId}`).then((saved) => {
+      if (saved) {
+        applianceDetailCache[applianceId] = saved;
+        setAppliance(saved);
+        setLoading(false);
+      }
+    });
+  }, [applianceId, appliance]);
 
   const loadDetails = useCallback(async () => {
     try {
       const data = await api.getAppliance(applianceId);
+      applianceDetailCache[applianceId] = data;
+      storageService.saveCache(`appliance_${applianceId}`, data).catch(() => {});
       setAppliance(data);
     } catch (err: any) {
-      Alert.alert('Error', err.message || 'Could not load appliance details');
+      console.warn('Could not load appliance details:', err?.message || err);
     } finally {
       setLoading(false);
     }
@@ -78,19 +98,24 @@ export const ApplianceDetailScreen: React.FC<ApplianceDetailScreenProps> = ({
       setDownloadingDocId(doc.id);
       const token = api.getToken();
       const downloadUrl = `${api.getBaseUrl()}/documents/${doc.id}/download?token=${token}`;
-      
+
       const safeFilename = doc.originalFilename.replace(/[^a-zA-Z0-9._-]/g, '_');
       const localUri = `${FileSystem.cacheDirectory}${safeFilename}`;
 
       const res = await FileSystem.downloadAsync(downloadUrl, localUri);
 
-      // Offer direct save to phone storage as primary action, or share/send as secondary
+      const isPdf = safeFilename.toLowerCase().endsWith('.pdf');
+      const isPng = safeFilename.toLowerCase().endsWith('.png');
+      const mimeType = isPdf ? 'application/pdf' : isPng ? 'image/png' : 'image/jpeg';
+      const dotIdx = safeFilename.lastIndexOf('.');
+      const baseName = (dotIdx > 0 ? safeFilename.substring(0, dotIdx) : safeFilename).replace(/[^a-zA-Z0-9_-]/g, '_');
+
       Alert.alert(
         'Download Document',
         `Save "${doc.originalFilename}" to your phone?`,
         [
           {
-            text: '💾 Save to Phone Storage',
+            text: '💾 Save to Folder',
             onPress: async () => {
               try {
                 if (Platform.OS === 'android' && FileSystem.StorageAccessFramework) {
@@ -99,27 +124,34 @@ export const ApplianceDetailScreen: React.FC<ApplianceDetailScreenProps> = ({
                     const base64 = await FileSystem.readAsStringAsync(res.uri, {
                       encoding: FileSystem.EncodingType.Base64,
                     });
-                    const mimeType =
-                      doc.mimeType ||
-                      (safeFilename.toLowerCase().endsWith('.pdf') ? 'application/pdf' : 'image/jpeg');
-                    const dotIdx = safeFilename.lastIndexOf('.');
-                    const nameWithoutExt = dotIdx > 0 ? safeFilename.substring(0, dotIdx) : safeFilename;
 
-                    const newFileUri = await FileSystem.StorageAccessFramework.createFileAsync(
-                      permissions.directoryUri,
-                      nameWithoutExt,
-                      mimeType
-                    );
+                    try {
+                      const newFileUri = await FileSystem.StorageAccessFramework.createFileAsync(
+                        permissions.directoryUri,
+                        baseName,
+                        mimeType
+                      );
 
-                    await FileSystem.writeAsStringAsync(newFileUri, base64, {
-                      encoding: FileSystem.EncodingType.Base64,
-                    });
+                      await FileSystem.writeAsStringAsync(newFileUri, base64, {
+                        encoding: FileSystem.EncodingType.Base64,
+                      });
 
-                    Alert.alert(
-                      'Download Complete ✅',
-                      `"${doc.originalFilename}" has been saved directly to your phone storage.`
-                    );
-                    return;
+                      Alert.alert(
+                        'Download Complete ✅',
+                        `"${doc.originalFilename}" has been saved to your selected folder.`
+                      );
+                      return;
+                    } catch (createErr) {
+                      console.warn('SAF createFile rejected, falling back to direct share:', createErr);
+                      if (await Sharing.isAvailableAsync()) {
+                        await Sharing.shareAsync(res.uri, {
+                          mimeType,
+                          dialogTitle: `Save ${doc.originalFilename}`,
+                          UTI: isPdf ? 'com.adobe.pdf' : 'public.image',
+                        });
+                        return;
+                      }
+                    }
                   }
                 }
 
@@ -127,27 +159,33 @@ export const ApplianceDetailScreen: React.FC<ApplianceDetailScreenProps> = ({
                 const canShare = await Sharing.isAvailableAsync();
                 if (canShare) {
                   await Sharing.shareAsync(res.uri, {
-                    mimeType: doc.mimeType || (safeFilename.toLowerCase().endsWith('.pdf') ? 'application/pdf' : 'image/jpeg'),
+                    mimeType,
                     dialogTitle: `Save ${doc.originalFilename}`,
-                    UTI: safeFilename.toLowerCase().endsWith('.pdf') ? 'com.adobe.pdf' : 'public.image',
+                    UTI: isPdf ? 'com.adobe.pdf' : 'public.image',
                   });
                 }
               } catch (saveErr: any) {
-                console.warn('Direct phone storage save error:', saveErr);
-                Alert.alert('Save Error', saveErr?.message || 'Could not save file to device storage.');
+                console.warn('Direct storage save error:', saveErr);
+                if (await Sharing.isAvailableAsync()) {
+                  await Sharing.shareAsync(res.uri, {
+                    mimeType,
+                    dialogTitle: `Save ${doc.originalFilename}`,
+                    UTI: isPdf ? 'com.adobe.pdf' : 'public.image',
+                  });
+                }
               }
             },
           },
           {
-            text: '📤 Share / Send to App',
+            text: '📤 Share / Send',
             onPress: async () => {
               try {
                 const canShare = await Sharing.isAvailableAsync();
                 if (canShare) {
                   await Sharing.shareAsync(res.uri, {
-                    mimeType: doc.mimeType || (safeFilename.toLowerCase().endsWith('.pdf') ? 'application/pdf' : 'image/jpeg'),
+                    mimeType,
                     dialogTitle: `Share ${doc.originalFilename}`,
-                    UTI: safeFilename.toLowerCase().endsWith('.pdf') ? 'com.adobe.pdf' : 'public.image',
+                    UTI: isPdf ? 'com.adobe.pdf' : 'public.image',
                   });
                 }
               } catch (shareErr: any) {
@@ -669,23 +707,49 @@ export const ApplianceDetailScreen: React.FC<ApplianceDetailScreenProps> = ({
               </TouchableOpacity>
             </View>
 
-            <ScrollView
-              style={styles.imageViewerScroll}
-              contentContainerStyle={styles.imageViewerScrollContent}
-              maximumZoomScale={3}
-              minimumZoomScale={1}
-              showsHorizontalScrollIndicator={false}
-              showsVerticalScrollIndicator={false}
-            >
-              <Image
-                source={{
-                  uri: `${api.getBaseUrl()}/documents/${viewingDocument.id}/download?token=${api.getToken()}`,
-                  headers: { Authorization: `Bearer ${api.getToken()}` },
-                }}
-                style={styles.fullInvoiceImage}
-                resizeMode="contain"
-              />
-            </ScrollView>
+            {viewingDocument.mimeType === 'application/pdf' || viewingDocument.originalFilename.toLowerCase().endsWith('.pdf') ? (
+              <View style={styles.pdfViewerContainer}>
+                <Ionicons name="document-text-outline" size={72} color="#FF4D4F" />
+                <Text style={styles.pdfViewerName}>{viewingDocument.originalFilename}</Text>
+                <Text style={styles.pdfViewerMeta}>
+                  PDF Document • {(viewingDocument.fileSize / 1024).toFixed(1)} KB
+                </Text>
+                <TouchableOpacity
+                  style={styles.pdfOpenActionBtn}
+                  onPress={() => handleDownloadDocument(viewingDocument)}
+                  activeOpacity={0.8}
+                >
+                  <Ionicons name="download-outline" size={18} color="#0A0A0A" />
+                  <Text style={styles.pdfOpenActionText}>Open / Download PDF</Text>
+                </TouchableOpacity>
+              </View>
+            ) : (
+              <ScrollView
+                style={styles.imageViewerScroll}
+                contentContainerStyle={styles.imageViewerScrollContent}
+                maximumZoomScale={3}
+                minimumZoomScale={1}
+                showsHorizontalScrollIndicator={false}
+                showsVerticalScrollIndicator={false}
+              >
+                {docImageLoading && (
+                  <View style={styles.imageLoaderPlaceholder}>
+                    <ActivityIndicator size="large" color={COLORS.chaiOrange} />
+                    <Text style={styles.imageLoaderText}>Loading document preview...</Text>
+                  </View>
+                )}
+                <Image
+                  source={{
+                    uri: `${api.getBaseUrl()}/documents/${viewingDocument.id}/download?token=${api.getToken()}`,
+                    headers: { Authorization: `Bearer ${api.getToken()}` },
+                  }}
+                  style={styles.fullInvoiceImage}
+                  resizeMode="contain"
+                  onLoadStart={() => setDocImageLoading(true)}
+                  onLoadEnd={() => setDocImageLoading(false)}
+                />
+              </ScrollView>
+            )}
 
             <View style={styles.imageViewerFooter}>
               <TouchableOpacity
@@ -694,7 +758,9 @@ export const ApplianceDetailScreen: React.FC<ApplianceDetailScreenProps> = ({
                 activeOpacity={0.85}
               >
                 <Ionicons name="download-outline" size={18} color="#0A0A0A" />
-                <Text style={styles.imageViewerDownloadBtnText}>Download Image</Text>
+                <Text style={styles.imageViewerDownloadBtnText}>
+                  {viewingDocument.originalFilename.toLowerCase().endsWith('.pdf') ? 'Download PDF' : 'Download Image'}
+                </Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={styles.imageViewerDoneBtn}
@@ -1291,6 +1357,52 @@ const styles = StyleSheet.create({
   fullInvoiceImage: {
     width: '100%',
     height: 520,
+  },
+  pdfViewerContainer: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 30,
+    gap: 14,
+  },
+  pdfViewerName: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '700',
+    textAlign: 'center',
+  },
+  pdfViewerMeta: {
+    color: 'rgba(255, 255, 255, 0.6)',
+    fontSize: 13,
+    textAlign: 'center',
+  },
+  pdfOpenActionBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    backgroundColor: COLORS.chaiOrange,
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    borderRadius: 12,
+    marginTop: 10,
+  },
+  pdfOpenActionText: {
+    color: '#0A0A0A',
+    fontSize: 14,
+    fontWeight: '800',
+  },
+  imageLoaderPlaceholder: {
+    position: 'absolute',
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 10,
+  },
+  imageLoaderText: {
+    color: COLORS.chaiOrange,
+    fontSize: 13,
+    fontWeight: '600',
+    marginTop: 10,
   },
   imageViewerFooter: {
     flexDirection: 'row',

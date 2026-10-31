@@ -19,6 +19,7 @@ import { DashboardData, Household, Reminder, ServiceRecord } from '../types';
 
 interface DashboardScreenProps {
   household: Household | null;
+  refreshTrigger?: number;
   onNavigateAppliances: () => void;
   onNavigateReminders: () => void;
   onAddAppliance: () => void;
@@ -31,6 +32,7 @@ const dashboardCache: Record<string, DashboardData> = {};
 
 export const DashboardScreen: React.FC<DashboardScreenProps> = ({
   household,
+  refreshTrigger,
   onNavigateAppliances,
   onNavigateReminders,
   onAddAppliance,
@@ -71,7 +73,7 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({
 
   useEffect(() => {
     loadDashboard();
-  }, [loadDashboard]);
+  }, [loadDashboard, refreshTrigger]);
 
   const onRefresh = () => {
     setRefreshing(true);

@@ -34,7 +34,6 @@ mongoose.connection.on('reconnected', () => {
 
 export const getDbStatus = (): {
   status: 'CONNECTED' | 'DISCONNECTED' | 'CONNECTING' | 'ERROR';
-  uri: string;
   databaseName: string;
 } => {
   const state = mongoose.connection.readyState;
@@ -53,7 +52,6 @@ export const getDbStatus = (): {
 
   return {
     status: statusStr,
-    uri: env.MONGODB_URI.replace(/\/\/[^:]+:[^@]+@/, '//***:***@'),
     databaseName: mongoose.connection.name || 'home_memory_db',
   };
 };

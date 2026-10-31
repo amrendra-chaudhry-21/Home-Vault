@@ -19,6 +19,7 @@ import { Appliance, ApplianceCategory, Household, WarrantyStatus } from '../type
 
 interface AppliancesScreenProps {
   household: Household | null;
+  refreshTrigger?: number;
   onSelectAppliance: (id: string) => void;
   onAddAppliance: () => void;
   onQuickQR: (appliance: Appliance) => void;
@@ -49,6 +50,7 @@ const appliancesCache: Record<string, Appliance[]> = {};
 
 export const AppliancesScreen: React.FC<AppliancesScreenProps> = ({
   household,
+  refreshTrigger,
   onSelectAppliance,
   onAddAppliance,
   onQuickQR,
@@ -97,7 +99,7 @@ export const AppliancesScreen: React.FC<AppliancesScreenProps> = ({
 
   useEffect(() => {
     loadAppliances();
-  }, [loadAppliances]);
+  }, [loadAppliances, refreshTrigger]);
 
   const onRefresh = () => {
     setRefreshing(true);

@@ -11,6 +11,7 @@ import {
   Platform,
   Alert,
   Image,
+  ActivityIndicator,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
@@ -77,7 +78,7 @@ export const AddApplianceModal: React.FC<AddApplianceModalProps> = ({
     try {
       const res = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ['images'],
-        quality: 0.8,
+        quality: 0.55,
         allowsEditing: true,
       });
       if (!res.canceled && res.assets && res.assets[0]) {
@@ -98,7 +99,7 @@ export const AddApplianceModal: React.FC<AddApplianceModalProps> = ({
         return;
       }
       const res = await ImagePicker.launchCameraAsync({
-        quality: 0.8,
+        quality: 0.55,
         allowsEditing: true,
       });
       if (!res.canceled && res.assets && res.assets[0]) {
@@ -400,13 +401,21 @@ export const AddApplianceModal: React.FC<AddApplianceModalProps> = ({
 
           <View style={styles.footer}>
             <TouchableOpacity
-              style={[styles.submitBtn, loading && { opacity: 0.7 }]}
+              style={[styles.submitBtn, loading && { opacity: 0.85 }]}
               onPress={handleSave}
               disabled={loading}
+              activeOpacity={0.8}
             >
-              <Text style={styles.submitBtnText}>
-                {loading ? 'Adding...' : 'Save Appliance to Vault'}
-              </Text>
+              {loading ? (
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                  <ActivityIndicator size="small" color="#0A0A0A" />
+                  <Text style={styles.submitBtnText}>
+                    {invoiceUri ? 'Uploading Invoice & Saving...' : 'Saving to Vault...'}
+                  </Text>
+                </View>
+              ) : (
+                <Text style={styles.submitBtnText}>Save Appliance to Vault</Text>
+              )}
             </TouchableOpacity>
           </View>
         </View>

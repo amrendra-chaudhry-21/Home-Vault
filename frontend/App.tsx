@@ -34,6 +34,7 @@ export default function App() {
   const [visitedTabs, setVisitedTabs] = useState<Record<string, boolean>>({ dashboard: true });
   const [selectedApplianceId, setSelectedApplianceId] = useState<string | null>(null);
   const [initializing, setInitializing] = useState(true);
+  const [refreshTrigger, setRefreshTrigger] = useState(0);
 
   const switchTab = (tab: TabScreen) => {
     setSelectedApplianceId(null);
@@ -69,6 +70,8 @@ export default function App() {
         setCurrentUser(null);
         setHousehold(null);
         setSelectedApplianceId(null);
+        setCurrentTab('dashboard');
+        setVisitedTabs({ dashboard: true });
       }
     });
 
@@ -180,6 +183,8 @@ export default function App() {
     householdObj?: Household | null
   ) => {
     setCurrentUser(user);
+    setCurrentTab('dashboard');
+    setVisitedTabs({ dashboard: true });
     if (householdObj) {
       setHousehold(householdObj);
       api.setCurrentHouseholdId(householdObj.id);
@@ -259,6 +264,7 @@ export default function App() {
             <View style={[styles.tabPane, currentTab === 'dashboard' ? styles.tabActive : styles.tabHidden]}>
               <DashboardScreen
                 household={household}
+                refreshTrigger={refreshTrigger}
                 onNavigateAppliances={() => switchTab('appliances')}
                 onNavigateReminders={() => switchTab('reminders')}
                 onAddAppliance={() => setIsAddApplianceVisible(true)}
@@ -267,10 +273,11 @@ export default function App() {
               />
             </View>
 
-            {visitedTabs.appliances && (
+            {(visitedTabs.appliances || currentTab === 'appliances') && (
               <View style={[styles.tabPane, currentTab === 'appliances' ? styles.tabActive : styles.tabHidden]}>
                 <AppliancesScreen
                   household={household}
+                  refreshTrigger={refreshTrigger}
                   onSelectAppliance={(id) => setSelectedApplianceId(id)}
                   onAddAppliance={() => setIsAddApplianceVisible(true)}
                   onQuickQR={(app) => handleOpenQR(app)}
@@ -279,13 +286,13 @@ export default function App() {
               </View>
             )}
 
-            {visitedTabs.reminders && (
+            {(visitedTabs.reminders || currentTab === 'reminders') && (
               <View style={[styles.tabPane, currentTab === 'reminders' ? styles.tabActive : styles.tabHidden]}>
                 <RemindersScreen household={household} />
               </View>
             )}
 
-            {visitedTabs.settings && (
+            {(visitedTabs.settings || currentTab === 'settings') && (
               <View style={[styles.tabPane, currentTab === 'settings' ? styles.tabActive : styles.tabHidden]}>
                 <SettingsScreen
                   user={currentUser}
@@ -296,6 +303,7 @@ export default function App() {
                     setCurrentUser(null);
                     setHousehold(null);
                     setSelectedApplianceId(null);
+                    setCurrentTab('dashboard');
                     setVisitedTabs({ dashboard: true });
                   }}
                   onSelectHousehold={(h) => {
@@ -341,8 +349,8 @@ export default function App() {
               Alert.alert('Notice', 'Appliance saved, but invoice upload failed: ' + (err?.message || 'Error'));
             }
           }
-          // If in appliances tab, trigger reload
-          setCurrentTab('appliances');
+          setRefreshTrigger((prev) => prev + 1);
+          switchTab('appliances');
         }}
       />
 

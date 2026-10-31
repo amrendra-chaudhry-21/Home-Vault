@@ -183,7 +183,7 @@ export class ApplianceService {
     const appliance = await Appliance.findOne({
       _id: applianceId,
       archivedAt: null,
-    });
+    }).lean();
 
     if (!appliance) {
       throw AppError.notFound('Appliance not found');
